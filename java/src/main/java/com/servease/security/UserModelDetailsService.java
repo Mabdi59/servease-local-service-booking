@@ -12,9 +12,10 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Authenticate a user from the database.
@@ -35,29 +36,37 @@ public class UserModelDetailsService implements UserDetailsService {
         log.debug("Authenticating user '{}'", login);
 
         String lowercaseLogin = login.toLowerCase();
-
         User user = userDao.getUserByUsername(lowercaseLogin);
-        if (user != null) {
-            return createSpringSecurityUser(lowercaseLogin, user);
-        } else {
+
+        if (user == null) {
+            log.error("Authentication failed: User '{}' not found.", lowercaseLogin);
             throw new UsernameNotFoundException("User " + lowercaseLogin + " was not found.");
         }
+
+        if (!user.isActivated()) {
+            log.error("Authentication failed: User '{}' is not activated.", lowercaseLogin);
+            throw new UsernameNotFoundException("User " + lowercaseLogin + " was not activated.");
+        }
+
+        return createSpringSecurityUser(user);
     }
 
-    private org.springframework.security.core.userdetails.User createSpringSecurityUser(String lowercaseLogin, User user) {
-        if (!user.isActivated()) {
-            throw new UserNotActivatedException("User " + lowercaseLogin + " was not activated");
-        }
-
-        List<GrantedAuthority> grantedAuthorities = new ArrayList<>();
+    private org.springframework.security.core.userdetails.User createSpringSecurityUser(User user) {
         Set<Authority> userAuthorities = user.getAuthorities();
-        for (Authority authority : userAuthorities) {
-            grantedAuthorities.add(new SimpleGrantedAuthority(authority.getName()));
+        Set<GrantedAuthority> grantedAuthorities = new HashSet<>();
+
+        if (userAuthorities != null) {
+            grantedAuthorities = userAuthorities.stream()
+                    .map(authority -> new SimpleGrantedAuthority(authority.getName()))
+                    .collect(Collectors.toSet());
+        } else {
+            log.warn("User '{}' has no assigned roles.", user.getUsername());
         }
 
-        return new org.springframework.security.core.userdetails.User(user.getUsername(),
-                user.getPassword(),
-                grantedAuthorities);
+        return new org.springframework.security.core.userdetails.User(
+                user.getUsername(),
+                user.getPasswordHash(),  // Changed from getPassword() to getPasswordHash()
+                grantedAuthorities.isEmpty() ? Collections.singleton(new SimpleGrantedAuthority("ROLE_USER")) : grantedAuthorities
+        );
     }
 }
-

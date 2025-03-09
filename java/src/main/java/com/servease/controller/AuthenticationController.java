@@ -1,7 +1,6 @@
 package com.servease.controller;
 
 import jakarta.validation.Valid;
-
 import com.servease.exception.DaoException;
 import com.servease.model.*;
 import org.springframework.http.HttpHeaders;
@@ -12,19 +11,18 @@ import org.springframework.security.config.annotation.authentication.builders.Au
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
-
 import com.servease.dao.UserDao;
 import com.servease.security.jwt.JWTFilter;
 import com.servease.security.jwt.TokenProvider;
 
 @RestController
 @CrossOrigin
+@RequestMapping("/auth")
 public class AuthenticationController {
 
     private final TokenProvider tokenProvider;
     private final AuthenticationManagerBuilder authenticationManagerBuilder;
-    private UserDao userDao;
+    private final UserDao userDao;
 
     public AuthenticationController(TokenProvider tokenProvider, AuthenticationManagerBuilder authenticationManagerBuilder, UserDao userDao) {
         this.tokenProvider = tokenProvider;
@@ -32,42 +30,35 @@ public class AuthenticationController {
         this.userDao = userDao;
     }
 
-    @RequestMapping(path = "/login", method = RequestMethod.POST)
-    public ResponseEntity<LoginResponseDto> login(@Valid @RequestBody LoginDto loginDto) {
-
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@Valid @RequestBody LoginDto loginDto) {
         UsernamePasswordAuthenticationToken authenticationToken =
-                new UsernamePasswordAuthenticationToken(loginDto.getUsername(), loginDto.getPassword());
+                new UsernamePasswordAuthenticationToken(loginDto.getUsername().toLowerCase(), loginDto.getPassword());
 
         Authentication authentication = authenticationManagerBuilder.getObject().authenticate(authenticationToken);
         SecurityContextHolder.getContext().setAuthentication(authentication);
         String jwt = tokenProvider.createToken(authentication, false);
 
-        User user;
-        try {
-            user = userDao.getUserByUsername(loginDto.getUsername());
-        } catch (DaoException e) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Username or password is incorrect.");
+        User user = userDao.getUserByUsername(loginDto.getUsername().toLowerCase());
+        if (user == null || !user.isActivated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User account is inactive or does not exist.");
         }
 
         HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.add(JWTFilter.AUTHORIZATION_HEADER, "Bearer " + jwt);
-        return new ResponseEntity<>(new LoginResponseDto(jwt, user), httpHeaders, HttpStatus.OK);
+        return ResponseEntity.ok().headers(httpHeaders).body(new LoginResponseDto(jwt, user));
     }
 
-    @ResponseStatus(HttpStatus.CREATED)
-    @RequestMapping(path = "/register", method = RequestMethod.POST)
-    public void register(@Valid @RequestBody RegisterUserDto newUser) {
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterUserDto newUser) {
         try {
-            if (userDao.getUserByUsername(newUser.getUsername()) != null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User already exists.");
-            } else {
-                userDao.createUser(newUser);
+            if (userDao.getUserByUsername(newUser.getUsername().toLowerCase()) != null) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Username is already taken.");
             }
-        }
-        catch (DaoException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "User registration failed.");
+            userDao.createUser(newUser);
+            return ResponseEntity.status(HttpStatus.CREATED).body("User registered successfully.");
+        } catch (DaoException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("User registration failed.");
         }
     }
-
 }
-

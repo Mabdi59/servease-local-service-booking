@@ -1,76 +1,65 @@
 package com.servease.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotEmpty;
+import lombok.*;
 
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@ToString
 public class User {
 
-   private int id;
+   private int userId;  // Changed from id to userId to match DB
+
+   @NotEmpty(message = "Username cannot be empty.")
    private String username;
+
+   @NotEmpty(message = "Full name cannot be empty.")
+   private String fullName;
+
+   @Email(message = "Invalid email format.")
+   @NotEmpty(message = "Email is required.")
+   private String email;
+
    @JsonIgnore
-   private String password;
+   @NotEmpty(message = "Password cannot be empty.")
+   private String passwordHash;
+
+   private String phone;
+
    @JsonIgnore
    private boolean activated;
+
+   @NotEmpty(message = "Role cannot be empty.")
+   private String role;
+
    private Set<Authority> authorities = new HashSet<>();
 
-   public User() { }
-
-   public User(int id, String username, String password, String authorities) {
-      this.id = id;
+   public User(int userId, String username, String fullName, String email, String passwordHash, String phone, String role) {
+      this.userId = userId;
       this.username = username;
-      this.password = password;
-      if (authorities != null) this.setAuthorities(authorities);
+      this.fullName = fullName;
+      this.email = email;
+      this.passwordHash = passwordHash;
+      this.phone = phone;
+      this.role = role;
       this.activated = true;
+      this.setAuthorities(role);
    }
 
-   public int getId() {
-      return id;
-   }
-
-   public void setId(int id) {
-      this.id = id;
-   }
-
-   public String getUsername() {
-      return username;
-   }
-
-   public void setUsername(String username) {
-      this.username = username;
-   }
-
-   public String getPassword() {
-      return password;
-   }
-
-   public void setPassword(String password) {
-      this.password = password;
-   }
-
-   public boolean isActivated() {
-      return activated;
-   }
-
-   public void setActivated(boolean activated) {
-      this.activated = activated;
-   }
-
-   public Set<Authority> getAuthorities() {
-      return authorities;
-   }
-
-   public void setAuthorities(Set<Authority> authorities) {
-      this.authorities = authorities;
-   }
-
-   public void setAuthorities(String authorities) {
-      String[] roles = authorities.split(",");
-      for (String role : roles) {
-         String authority = role.contains("ROLE_") ? role : "ROLE_" + role;
-         this.authorities.add(new Authority(authority));
+   public void setAuthorities(String roles) {
+      this.authorities.clear();
+      String[] roleArray = roles.split(",");
+      for (String role : roleArray) {
+         String formattedRole = role.startsWith("ROLE_") ? role : "ROLE_" + role.toUpperCase();
+         this.authorities.add(new Authority(formattedRole));
       }
    }
 
@@ -79,25 +68,19 @@ public class User {
       if (this == o) return true;
       if (o == null || getClass() != o.getClass()) return false;
       User user = (User) o;
-      return id == user.id &&
+      return userId == user.userId &&
               activated == user.activated &&
               Objects.equals(username, user.username) &&
-              Objects.equals(password, user.password) &&
+              Objects.equals(fullName, user.fullName) &&
+              Objects.equals(email, user.email) &&
+              Objects.equals(phone, user.phone) &&
+              Objects.equals(passwordHash, user.passwordHash) &&
+              Objects.equals(role, user.role) &&
               Objects.equals(authorities, user.authorities);
    }
 
    @Override
    public int hashCode() {
-      return Objects.hash(id, username, password, activated, authorities);
-   }
-
-   @Override
-   public String toString() {
-      return "User{" +
-              "id=" + id +
-              ", username='" + username + '\'' +
-              ", activated=" + activated +
-              ", authorities=" + authorities +
-              '}';
+      return Objects.hash(userId, username, fullName, email, phone, passwordHash, activated, role, authorities);
    }
 }
